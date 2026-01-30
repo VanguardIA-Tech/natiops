@@ -10,6 +10,7 @@ exports.SyncModule = void 0;
 const common_1 = require("@nestjs/common");
 const dapic_module_1 = require("../dapic/dapic.module");
 const products_module_1 = require("../products/products.module");
+const catalog_module_1 = require("../catalog/catalog.module");
 const sync_controller_1 = require("./sync.controller");
 const sync_service_1 = require("./sync.service");
 const sync_worker_service_1 = require("./sync-worker.service");
@@ -18,7 +19,7 @@ let SyncModule = class SyncModule {
 exports.SyncModule = SyncModule;
 exports.SyncModule = SyncModule = __decorate([
     (0, common_1.Module)({
-        imports: [dapic_module_1.DapicModule, products_module_1.ProductsModule],
+        imports: [dapic_module_1.DapicModule, products_module_1.ProductsModule, catalog_module_1.CatalogModule],
         controllers: [sync_controller_1.SyncController],
         providers: [sync_service_1.SyncService, sync_worker_service_1.SyncWorkerService],
         exports: [sync_service_1.SyncService, sync_worker_service_1.SyncWorkerService],

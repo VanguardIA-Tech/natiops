@@ -9,17 +9,18 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RenewHoldDto = void 0;
-const class_validator_1 = require("class-validator");
+exports.BodyProductsDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
-class RenewHoldDto {
+const class_validator_1 = require("class-validator");
+class BodyProductsDto {
 }
-exports.RenewHoldDto = RenewHoldDto;
+exports.BodyProductsDto = BodyProductsDto;
 __decorate([
-    (0, class_validator_1.IsISO8601)(),
-    (0, swagger_1.ApiProperty)({
-        description: 'Nova data de expiração da reserva em ISO 8601',
-        example: '2026-02-10T23:59:59Z',
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, swagger_1.ApiPropertyOptional)({
+        description: 'Nome completo ou parcial do produto para busca',
+        example: 'BC601719 - Botao Cristal - Diversos',
     }),
     __metadata("design:type", String)
-], RenewHoldDto.prototype, "expiresAt", void 0);
+], BodyProductsDto.prototype, "nome", void 0);

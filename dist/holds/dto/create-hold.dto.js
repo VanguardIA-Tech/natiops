@@ -11,23 +11,40 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateHoldDto = void 0;
 const class_validator_1 = require("class-validator");
+const swagger_1 = require("@nestjs/swagger");
 class CreateHoldDto {
 }
 exports.CreateHoldDto = CreateHoldDto;
 __decorate([
     (0, class_validator_1.IsString)(),
+    (0, swagger_1.ApiProperty)({
+        description: 'Identificador externo do produto a ser reservado',
+        example: 'PROD-123',
+    }),
     __metadata("design:type", String)
 ], CreateHoldDto.prototype, "externalId", void 0);
 __decorate([
     (0, class_validator_1.IsEmail)(),
+    (0, swagger_1.ApiProperty)({
+        description: 'Email do cliente que está solicitando a reserva',
+        example: 'cliente@nativa.com.br',
+    }),
     __metadata("design:type", String)
 ], CreateHoldDto.prototype, "email", void 0);
 __decorate([
     (0, class_validator_1.IsInt)(),
     (0, class_validator_1.IsPositive)(),
+    (0, swagger_1.ApiProperty)({
+        description: 'Quantidade de itens que devem ser reservados',
+        example: 2,
+    }),
     __metadata("design:type", Number)
 ], CreateHoldDto.prototype, "quantity", void 0);
 __decorate([
     (0, class_validator_1.IsISO8601)(),
+    (0, swagger_1.ApiProperty)({
+        description: 'Data de expiração da reserva em ISO 8601',
+        example: '2026-02-05T23:59:59Z',
+    }),
     __metadata("design:type", String)
 ], CreateHoldDto.prototype, "expiresAt", void 0);

@@ -9,17 +9,20 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RenewHoldDto = void 0;
-const class_validator_1 = require("class-validator");
+exports.CapacityResponseDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
-class RenewHoldDto {
+class CapacityResponseDto {
 }
-exports.RenewHoldDto = RenewHoldDto;
+exports.CapacityResponseDto = CapacityResponseDto;
 __decorate([
-    (0, class_validator_1.IsISO8601)(),
-    (0, swagger_1.ApiProperty)({
-        description: 'Nova data de expiração da reserva em ISO 8601',
-        example: '2026-02-10T23:59:59Z',
-    }),
-    __metadata("design:type", String)
-], RenewHoldDto.prototype, "expiresAt", void 0);
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", Number)
+], CapacityResponseDto.prototype, "stockTotal", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", Number)
+], CapacityResponseDto.prototype, "reservedStock", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", Number)
+], CapacityResponseDto.prototype, "availableStock", void 0);

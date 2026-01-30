@@ -9,17 +9,17 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RenewHoldDto = void 0;
-const class_validator_1 = require("class-validator");
+exports.FindHoldsByEmailDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
-class RenewHoldDto {
+const class_validator_1 = require("class-validator");
+class FindHoldsByEmailDto {
 }
-exports.RenewHoldDto = RenewHoldDto;
+exports.FindHoldsByEmailDto = FindHoldsByEmailDto;
 __decorate([
-    (0, class_validator_1.IsISO8601)(),
+    (0, class_validator_1.IsEmail)(),
     (0, swagger_1.ApiProperty)({
-        description: 'Nova data de expiração da reserva em ISO 8601',
-        example: '2026-02-10T23:59:59Z',
+        description: 'Email usado para buscar reservas ativas',
+        example: 'cliente@nativa.com.br',
     }),
     __metadata("design:type", String)
-], RenewHoldDto.prototype, "expiresAt", void 0);
+], FindHoldsByEmailDto.prototype, "email", void 0);

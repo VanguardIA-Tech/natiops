@@ -9,17 +9,21 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RenewHoldDto = void 0;
-const class_validator_1 = require("class-validator");
+exports.FindHoldsByEmailResponseDto = void 0;
 const swagger_1 = require("@nestjs/swagger");
-class RenewHoldDto {
+const hold_with_product_response_dto_1 = require("./hold-with-product-response.dto");
+class FindHoldsByEmailResponseDto {
 }
-exports.RenewHoldDto = RenewHoldDto;
+exports.FindHoldsByEmailResponseDto = FindHoldsByEmailResponseDto;
 __decorate([
-    (0, class_validator_1.IsISO8601)(),
-    (0, swagger_1.ApiProperty)({
-        description: 'Nova data de expiração da reserva em ISO 8601',
-        example: '2026-02-10T23:59:59Z',
-    }),
+    (0, swagger_1.ApiProperty)({ type: hold_with_product_response_dto_1.HoldWithProductResponseDto, isArray: true }),
+    __metadata("design:type", Array)
+], FindHoldsByEmailResponseDto.prototype, "holds", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)(),
+    __metadata("design:type", Number)
+], FindHoldsByEmailResponseDto.prototype, "total", void 0);
+__decorate([
+    (0, swagger_1.ApiProperty)({ required: false }),
     __metadata("design:type", String)
-], RenewHoldDto.prototype, "expiresAt", void 0);
+], FindHoldsByEmailResponseDto.prototype, "message", void 0);

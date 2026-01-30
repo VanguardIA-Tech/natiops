@@ -13,16 +13,22 @@ const prisma_module_1 = require("./prisma/prisma.module");
 const sync_module_1 = require("./sync/sync.module");
 const products_module_1 = require("./products/products.module");
 const holds_module_1 = require("./holds/holds.module");
+const catalog_module_1 = require("./catalog/catalog.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            config_1.ConfigModule.forRoot({ isGlobal: true, expandVariables: true }),
+            config_1.ConfigModule.forRoot({
+                isGlobal: true,
+                expandVariables: true,
+                envFilePath: ['.env', '.env.local'],
+            }),
             prisma_module_1.PrismaModule,
             sync_module_1.SyncModule,
             products_module_1.ProductsModule,
+            catalog_module_1.CatalogModule,
             holds_module_1.HoldsModule,
         ],
     })

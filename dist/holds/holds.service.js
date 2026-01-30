@@ -8,16 +8,19 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var HoldsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HoldsService = void 0;
 const common_1 = require("@nestjs/common");
 const client_1 = require("@prisma/client");
 const prisma_service_1 = require("../prisma/prisma.service");
-let HoldsService = class HoldsService {
+let HoldsService = HoldsService_1 = class HoldsService {
     constructor(prisma) {
         this.prisma = prisma;
+        this.logger = new common_1.Logger(HoldsService_1.name);
     }
     async createHold(dto) {
+        this.logger.log(`Chamando método createHold com dto: ${JSON.stringify(dto)}`);
         const hold = await this.prisma.$transaction(async (tx) => {
             const product = await tx.product.findUnique({
                 where: { externalId: dto.externalId },
@@ -47,6 +50,7 @@ let HoldsService = class HoldsService {
         return hold;
     }
     async cancelHold(id) {
+        this.logger.log(`Chamando método cancelHold com id: ${id}`);
         const hold = await this.prisma.hold.findUnique({ where: { id } });
         if (!hold) {
             throw new common_1.NotFoundException('Reserva não encontrada');
@@ -86,15 +90,22 @@ let HoldsService = class HoldsService {
         });
     }
     async findByEmail(email) {
-        return this.prisma.hold.findMany({
-            where: { email },
+        const holds = await this.prisma.hold.findMany({
+            where: { email, status: client_1.HoldStatus.ACTIVE },
             orderBy: { createdAt: 'desc' },
             include: { product: true },
         });
+        return {
+            holds,
+            total: holds.length,
+            ...(holds.length === 0 && {
+                message: 'Nenhuma reserva ativa encontrada para este email.',
+            }),
+        };
     }
 };
 exports.HoldsService = HoldsService;
-exports.HoldsService = HoldsService = __decorate([
+exports.HoldsService = HoldsService = HoldsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_1.PrismaService])
 ], HoldsService);
