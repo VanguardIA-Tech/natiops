@@ -1,0 +1,15 @@
+name: Sync Diário
+
+on:
+  schedule:
+    - cron: '0 8,14,20 * * *' # 08h, 14h e 20h UTC (ajuste para seu fuso)
+  workflow_dispatch: {}
+
+jobs:
+   sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar run
+        run: curl -X POST https://seu-domínio.com/sync/runs/full -H "Content-Type: application/json"
+      - name: Processar run
+        run: curl -X POST https://seu-domínio.com/sync/runs/full/process -H "Content-Type: application/json"
