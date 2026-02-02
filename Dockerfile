@@ -34,7 +34,6 @@ COPY --from=builder /app/dist ./dist
 
 # 🔥 GERA O PRISMA CLIENT NO CONTAINER FINAL
 RUN npx prisma generate
-RUN npx prisma migrate deploy
 
 EXPOSE 3000
 
