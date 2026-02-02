@@ -34,7 +34,8 @@ COPY --from=builder /app/dist ./dist
 
 # 🔥 GERA O PRISMA CLIENT NO CONTAINER FINAL
 RUN npx prisma generate
+RUN npx prisma migrate deploy
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "node dist/main.js"]
