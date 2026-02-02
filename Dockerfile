@@ -8,7 +8,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 RUN npm install
 
-# Gera Prisma Client para build
+# ✅ schema sem url => generate funciona
 RUN npx prisma generate
 
 COPY . .
@@ -26,15 +26,16 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copia schema e migrations
 COPY --from=builder /app/prisma ./prisma
-
-# Copia build
 COPY --from=builder /app/dist ./dist
 
-# 🔥 GERA O PRISMA CLIENT NO CONTAINER FINAL
+# ✅ gera client no container final (sem precisar do prisma.config.ts no build)
 RUN npx prisma generate
+
+# ✅ MUITO IMPORTANTE: agora sim copiar o config do Prisma v7
+COPY prisma.config.ts ./prisma.config.ts
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "node dist/main.js"]
+# ✅ roda migrations no runtime (agora o prisma.config.ts existe!)
+CMD ["sh", "-c", "npx prisma migrate deploy --config ./prisma.config.ts && node dist/main.js"]
