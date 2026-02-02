@@ -1,10 +1,5 @@
-import { config } from 'dotenv';
-import { defineConfig } from 'prisma/config';
-import path from 'path';
+import { defineConfig } from '@prisma/config';
 
-config({
-  path: path.resolve(process.cwd(), '.env'),
-});
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is not defined');
@@ -12,10 +7,11 @@ if (!process.env.DATABASE_URL) {
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
+  datasource: {
+    url: process.env.DATABASE_URL!,
+  },
+
   migrations: {
     path: 'prisma/migrations',
-  },
-  datasource: {
-    url: process.env.DATABASE_URL,
   },
 });
