@@ -51,6 +51,7 @@ export class ProductsController {
   })
   @ApiNotFoundResponse({ description: 'Produto não encontrado' })
   async getStock(@Param('externalId') externalId: string) {
+    this.logger.log(`Getting stock by externalId: ${externalId}`);
     const product = await this.productsService.findByExternalId(externalId);
     if (!product) {
       throw new NotFoundException('Produto não encontrado');
@@ -71,6 +72,7 @@ export class ProductsController {
   })
   @ApiNotFoundResponse({ description: 'Produto não encontrado' })
   async getDetails(@Param('id') id: string) {
+    this.logger.log(`Getting details by id: ${id}`);
     const product = await this.productsService.findById(id);
     if (!product) {
       throw new NotFoundException('Produto não encontrado');

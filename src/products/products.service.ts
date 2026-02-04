@@ -49,17 +49,31 @@ export class ProductsService {
     return product;
   }
 
-  async getCapacityOverview() {
-    const aggregation = await this.prisma.product.aggregate({
-      _sum: { stockTotal: true, reservedStock: true },
+  async getCapacityByItemName(nome?: string): Promise<
+    { nome: string; quantidadeDisponivel: number }[]
+  > {
+    this.logger.log(`Getting capacity by item name: ${nome}`);
+    const products = await this.prisma.product.findMany({
+      select: { externalId: true, name: true, quantidadeReal: true },
     });
-    const total = aggregation._sum.stockTotal ?? 0;
-    const reserved = aggregation._sum.reservedStock ?? 0;
-    return {
-      stockTotal: total,
-      reservedStock: reserved,
-      availableStock: total - reserved,
-    };
+
+    const filtered =
+      nome?.trim() ?
+        this.filterProductsByName(
+          products.map(p => ({ externalId: p.externalId, name: p.name })),
+          nome,
+        ).map(f => f.externalId)
+      : products.map(p => p.externalId);
+
+    const list = products
+      .filter(p => filtered.includes(p.externalId))
+      .sort((a, b) => (b.quantidadeReal ?? 0) - (a.quantidadeReal ?? 0))
+      .map(p => ({
+        nome: p.name,
+        quantidadeDisponivel: p.quantidadeReal ?? 0,
+      }));
+
+    return list;
   }
 
   async syncUpsert(externalId: string, payload: ProductSyncedPayload) {
@@ -95,6 +109,7 @@ export class ProductsService {
   }
 
   private filterProductsByName(products: { externalId: string; name?: string }[], query: string) {
+    this.logger.log(`Filtering products by name: ${query}`);
     const normalizedQuery = this.normalizeText(query);
     const queryWords = normalizedQuery.split(/\s+/).filter(Boolean);
     if (!queryWords.length) {

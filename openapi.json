@@ -1,0 +1,690 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Produtos Natiops",
+    "description": "API para buscar produtos e visualizar seus detalhes e estoque.",
+    "version": "v1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://clientes-natiops.53rnlo.easypanel.host"
+    }
+  ],
+  "paths": {
+    "/products": {
+      "post": {
+        "description": "Buscar produtos pelo nome informado (parte ou completo).",
+        "operationId": "BuscarProdutos",
+        "requestBody": {
+          "description": "Payload contendo o nome parcial ou completo do produto que deve ser buscado.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BodyProductsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lista (máximo 1 ou todos) de produtos com externalId e nome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProductSearchResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/products/{externalId}": {
+      "get": {
+        "description": "Retorna os dados completos do produto por externalId.",
+        "operationId": "ObterProdutoPorExternalId",
+        "parameters": [
+          {
+            "name": "externalId",
+            "in": "path",
+            "description": "Identificador único externo do produto.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "PROD-123"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes completos do produto, incluindo estoque e metadados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDetailsResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto não encontrado."
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/products/details/{id}": {
+      "get": {
+        "description": "Retorna os detalhes completos de um produto pelo seu id interno.",
+        "operationId": "ObterDetalhesDoProduto",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "UUID interno do produto.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b7f1c4f8-1234-4a00-8eee-123456789abc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes completos do produto solicitado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductDetailsResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto não encontrado."
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/capacity": {
+      "get": {
+        "description": "Lista itens por nome (busca similar), ordenados por quantidade disponível decrescente.",
+        "operationId": "ObterCapacidade",
+        "parameters": [
+          {
+            "name": "nome",
+            "in": "query",
+            "required": false,
+            "description": "Nome do item para filtrar (busca similar).",
+            "schema": {
+              "type": "string",
+              "example": "BC601719"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista com nome e quantidade disponível (quantidadeReal) de cada item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CapacityItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/holds": {
+      "post": {
+        "description": "Cria uma nova reserva de produto.",
+        "operationId": "CriarReserva",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateHoldDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Reserva criada com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Quantidade inválida ou estoque insuficiente."
+          },
+          "404": {
+            "description": "Produto não encontrado."
+          }
+        },
+        "deprecated": false
+      },
+      "get": {
+        "description": "Lista reservas ativas por email.",
+        "operationId": "ListarReservasPorEmail",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindHoldsByEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reservas encontradas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindHoldsByEmailResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Email inválido ou ausente."
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/holds/{id}/cancel": {
+      "patch": {
+        "description": "Cancela uma reserva ativa.",
+        "operationId": "CancelarReserva",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Identificador da reserva (UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "c1d2e3f4-5678-90ab-cdef-1234567890ab"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reserva cancelada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reserva já foi finalizada ou inválida."
+          },
+          "404": {
+            "description": "Reserva não encontrada."
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/holds/{id}/renew": {
+      "patch": {
+        "description": "Renova a data de expiração de uma reserva.",
+        "operationId": "RenovarReserva",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Identificador da reserva (UUID).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "c1d2e3f4-5678-90ab-cdef-1234567890ab"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewHoldDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reserva renovada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HoldResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reserva não está ativa."
+          },
+          "404": {
+            "description": "Reserva não encontrada."
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/catalogo/{referencia}/images": {
+      "get": {
+        "description": "Retorna as URLs das imagens de um item de catálogo.",
+        "operationId": "ObterImagensCatalogo",
+        "parameters": [
+          {
+            "name": "referencia",
+            "in": "path",
+            "description": "Referência única do item no catálogo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "REF-123"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de URLs de imagens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item de catálogo não encontrado."
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/catalogo/{referencia}/details": {
+      "get": {
+        "description": "Retorna os detalhes de um item de catálogo.",
+        "operationId": "ObterDetalhesCatalogo",
+        "parameters": [
+          {
+            "name": "referencia",
+            "in": "path",
+            "description": "Referência única do item no catálogo.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "REF-123"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes principais do item de catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogItemDetailsResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Item de catálogo não encontrado."
+          }
+        },
+        "deprecated": false
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BodyProductsDto": {
+        "type": "object",
+        "properties": {
+          "nome": {
+            "type": "string",
+            "description": "Nome completo ou parcial do produto para busca.",
+            "example": "BC601719 - Botao Cristal - Diversos"
+          }
+        }
+      },
+      "ProductSearchResponseDto": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          },
+          "nome": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "externalId",
+          "nome"
+        ]
+      },
+      "ProductDetailsResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "idProduto": {
+            "type": "number"
+          },
+          "idGradeProduto": {
+            "type": "number"
+          },
+          "idGradeProdutoEstoque": {
+            "type": "number"
+          },
+          "cor": {
+            "type": "string"
+          },
+          "tamanho": {
+            "type": "string"
+          },
+          "grupo": {
+            "type": "string"
+          },
+          "marca": {
+            "type": "string"
+          },
+          "colecao": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          },
+          "quantidadeReal": {
+            "type": "number"
+          },
+          "quantidadeComprometida": {
+            "type": "number"
+          },
+          "valor": {
+            "type": "number"
+          },
+          "valorCusto": {
+            "type": "number"
+          },
+          "stockTotal": {
+            "type": "number"
+          },
+          "reservedStock": {
+            "type": "number"
+          },
+          "idArmazenador": {
+            "type": "number"
+          },
+          "armazenador": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "externalId",
+          "name",
+          "stockTotal",
+          "reservedStock",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CapacityItemDto": {
+        "type": "object",
+        "properties": {
+          "nome": {
+            "type": "string",
+            "description": "Nome do produto."
+          },
+          "quantidadeDisponivel": {
+            "type": "number",
+            "description": "Quantidade disponível (quantidadeReal)."
+          }
+        },
+        "required": [
+          "nome",
+          "quantidadeDisponivel"
+        ]
+      },
+      "CreateHoldDto": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "description": "Identificador externo do produto a ser reservado.",
+            "example": "PROD-123"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email do cliente que está solicitando a reserva.",
+            "example": "cliente@nativa.com.br"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Quantidade de itens que devem ser reservados.",
+            "example": 2
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Data de expiração da reserva em ISO 8601.",
+            "example": "2026-02-05T23:59:59Z"
+          }
+        },
+        "required": [
+          "externalId",
+          "email",
+          "quantity",
+          "expiresAt"
+        ]
+      },
+      "HoldResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "productId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ACTIVE", "CANCELLED", "EXPIRED"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "productId",
+          "email",
+          "quantity",
+          "expiresAt",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "FindHoldsByEmailDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email usado para buscar reservas ativas.",
+            "example": "cliente@nativa.com.br"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "HoldWithProductResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "product": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "quantity",
+          "expiresAt",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "product"
+        ]
+      },
+      "FindHoldsByEmailResponseDto": {
+        "type": "object",
+        "properties": {
+          "holds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HoldWithProductResponseDto"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "holds",
+          "total"
+        ]
+      },
+      "RenewHoldDto": {
+        "type": "object",
+        "properties": {
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Nova data de expiração da reserva em ISO 8601.",
+            "example": "2026-02-10T23:59:59Z"
+          }
+        },
+        "required": [
+          "expiresAt"
+        ]
+      },
+      "CatalogItemDetailsResponseDto": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          },
+          "referencia": {
+            "type": "string"
+          },
+          "descricaoFabrica": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "unidadeDeMedida": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "externalId"
+        ]
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
-    "start": "node dist/main.js",
+    "start": "ts-node src/main.ts",
     "start:prod": "npx prisma migrate deploy && node dist/main.js",
     "build": "tsc",
     "lint": "eslint \"src/**/*.ts\"",

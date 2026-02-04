@@ -1,12 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export class CapacityResponseDto {
+export class CapacityItemDto {
   @ApiProperty()
-  stockTotal!: number;
+  nome!: string;
 
-  @ApiProperty()
-  reservedStock!: number;
-
-  @ApiProperty()
-  availableStock!: number;
+  @ApiProperty({ description: 'Quantidade disponível (quantidadeReal)' })
+  quantidadeDisponivel!: number;
 }
