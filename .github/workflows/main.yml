@@ -1,15 +1,20 @@
-name: Sync Diário
+name: Sincronizar Banco de dados
 
 on:
   schedule:
-    - cron: '0 8,14,20 * * *' # 08h, 14h e 20h UTC (ajuste para seu fuso)
-  workflow_dispatch: {}
+    - cron: '0 8,14,20 * * *' # 08h, 14h e 20h UTC
+  workflow_dispatch:
 
 jobs:
-   sync:
+  sincronizar:
     runs-on: ubuntu-latest
     steps:
       - name: Criar run
-        run: curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/full -H "Content-Type: application/json"
-      - name: Processar run
-        run: curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/full/process -H "Content-Type: application/json"
+        run: |
+          curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/full \
+          -H "Content-Type: application/json"
+
+      - name: Execução do processador
+        run: |
+          curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/full/process \
+          -H "Content-Type: application/json"
