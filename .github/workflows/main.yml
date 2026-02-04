@@ -10,6 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Criar run
-        run: curl -X POST https://seu-domínio.com/sync/runs/full -H "Content-Type: application/json"
+        run: curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/full -H "Content-Type: application/json"
       - name: Processar run
-        run: curl -X POST https://seu-domínio.com/sync/runs/full/process -H "Content-Type: application/json"
+        run: curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/full/process -H "Content-Type: application/json"
