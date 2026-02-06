@@ -62,9 +62,14 @@ export class ProductsService {
 
   async bulkUpsert(items: Array<{ externalId: string; payload: ProductSyncedPayload }>) {
     if (items.length === 0) return;
+    const deduped = new Map<string, { externalId: string; payload: ProductSyncedPayload }>();
+    for (const item of items) {
+      deduped.set(item.externalId, item);
+    }
+    const unique = Array.from(deduped.values());
     const BATCH_SIZE = 1000;
-    for (let i = 0; i < items.length; i += BATCH_SIZE) {
-      const chunk = items.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < unique.length; i += BATCH_SIZE) {
+      const chunk = unique.slice(i, i + BATCH_SIZE);
       await this.executeBulkUpsert(chunk);
     }
   }
@@ -79,27 +84,27 @@ export class ProductsService {
       const { externalId, payload } = items[i];
 
       valuesClauses.push(
-        `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, NOW(), NOW())`,
+        `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}::int, $${offset + 4}::int, $${offset + 5}::int, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}::int, $${offset + 12}::int, $${offset + 13}::int, $${offset + 14}::float8, $${offset + 15}::float8, $${offset + 16}::int, $${offset + 17}::int, $${offset + 18}, NOW(), NOW())`,
       );
 
       values.push(
         externalId,
         payload.name,
-        payload.idProduto ?? null,
-        payload.idGradeProduto ?? null,
-        payload.idGradeProdutoEstoque ?? null,
+        this.toInt(payload.idProduto),
+        this.toInt(payload.idGradeProduto),
+        this.toInt(payload.idGradeProdutoEstoque),
         payload.cor ?? null,
         payload.tamanho ?? null,
         payload.grupo ?? null,
         payload.marca ?? null,
         payload.colecao ?? null,
-        payload.quantidade ?? null,
-        payload.quantidadeReal ?? null,
-        payload.quantidadeComprometida ?? null,
+        this.toInt(payload.quantidade),
+        this.toInt(payload.quantidadeReal),
+        this.toInt(payload.quantidadeComprometida),
         payload.valor ?? null,
         payload.valorCusto ?? null,
-        payload.stockTotal,
-        payload.idArmazenador ?? null,
+        this.toInt(payload.stockTotal),
+        this.toInt(payload.idArmazenador),
         payload.armazenador ?? null,
       );
     }
@@ -152,6 +157,11 @@ export class ProductsService {
       return products;
     }
     return this.filterProductsByName(products, query);
+  }
+
+  private toInt(value: number | null | undefined): number | null {
+    if (value === null || value === undefined) return null;
+    return Math.trunc(value);
   }
 
   private normalizeText(text?: string) {

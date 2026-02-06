@@ -49,18 +49,6 @@ model Product {
   holds                  Hold[]
 }
 
-model CatalogItem {
-  id              String   @id @default(uuid())
-  externalId      String   @unique
-  referencia      String?  @unique
-  descricaoFabrica String?
-  status          String?
-  unidadeMedida   String?
-  fotos           Json?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
 model Hold {
   id          String     @id @default(uuid())
   product     Product    @relation(fields: [productId], references: [id])
