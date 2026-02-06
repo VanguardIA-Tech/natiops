@@ -45,6 +45,8 @@ export class SyncWorkerService {
       this.configService.get<number>('SYNC_PAGE_SIZE') ?? 200;
     const concurrency =
       this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 50;
+    const maxRetries =
+      this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
 
     const firstPageResult = await this.processPage(1, limit, runId);
     if (!firstPageResult.hasMore) {
@@ -69,20 +71,64 @@ export class SyncWorkerService {
       remainingPages.push(next);
     }
 
+    // Fase 1: processar todas as páginas, coletar falhas
+    const failedPages: number[] = [];
+    let processed = 1;
+
     if (remainingPages.length) {
-      let processed = 1;
       await this.runWithConcurrency(remainingPages, concurrency, async (page) => {
-        await this.processPage(page, limit, runId);
+        try {
+          await this.processPage(page, limit, runId);
+        } catch (error) {
+          this.logger.warn(`Página ${page} falhou, será retentada: ${(error as Error).message}`);
+          failedPages.push(page);
+        }
         processed++;
         if (processed % 100 === 0) {
-          this.logger.log(`Progresso: ${processed}/${totalPages} páginas`);
+          this.logger.log(`Progresso: ${processed}/${totalPages} páginas (${failedPages.length} falhas)`);
           await this.syncService.updateRunProgress(runId, page);
         }
       });
     }
 
+    // Fase 2: retry das páginas que falharam (com timeout maior e espera entre tentativas)
+    if (failedPages.length > 0) {
+      this.logger.log(`Retentando ${failedPages.length} páginas que falharam...`);
+      const stillFailed: number[] = [];
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const toRetry = attempt === 1 ? failedPages : stillFailed.splice(0);
+        if (toRetry.length === 0) break;
+
+        const delayMs = attempt * 5000; // 5s, 10s, 15s entre tentativas
+        this.logger.log(`Retry tentativa ${attempt}/${maxRetries}: ${toRetry.length} páginas (aguardando ${delayMs / 1000}s)`);
+        await this.sleep(delayMs);
+
+        const retryConcurrency = Math.min(concurrency, 10); // menos agressivo no retry
+        const retryTimeout = 30000; // 30s de timeout no retry
+
+        await this.runWithConcurrency(toRetry, retryConcurrency, async (page) => {
+          try {
+            await this.processPage(page, limit, runId, retryTimeout);
+          } catch (error) {
+            this.logger.warn(`Página ${page} falhou no retry ${attempt}: ${(error as Error).message}`);
+            stillFailed.push(page);
+          }
+        });
+      }
+
+      if (stillFailed.length > 0) {
+        this.logger.error(`${stillFailed.length} páginas falharam após ${maxRetries} tentativas: [${stillFailed.slice(0, 20).join(', ')}${stillFailed.length > 20 ? '...' : ''}]`);
+      }
+    }
+
     await this.syncService.updateRunProgress(runId, totalPages);
-    this.logger.log(`Sync concluído: ${totalPages} páginas processadas`);
+    const successPages = totalPages - failedPages.length;
+    this.logger.log(`Sync concluído: ${successPages}/${totalPages} páginas processadas com sucesso`);
+  }
+
+  private sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async runWithConcurrency<T>(
@@ -105,8 +151,9 @@ export class SyncWorkerService {
     page: number,
     limit: number,
     runId: string,
+    timeoutMs = 15000,
   ) {
-    const response = await this.dapicService.fetchProductPage(page, limit);
+    const response = await this.dapicService.fetchProductPage(page, limit, timeoutMs);
     const { items, pagination } = this.extractPage(response);
     if (!items.length) {
       return { pagination, hasMore: false };

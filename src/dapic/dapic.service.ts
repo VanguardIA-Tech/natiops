@@ -80,59 +80,59 @@ export class DapicService {
     }
   }
 
-  async fetchProductPage(page: number, limit = 100): Promise<DapicPageResponse> {
-    const token = await this.ensureAccessToken();
-    try {
-      const response = await axios.get(`${this.baseUrl}/v1/armazenadores/produtos`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: {
-          Pagina: page,
-          RegistrosPorPagina: limit,
-        },
-      });
-      const dadosArray = Array.isArray(response.data?.Dados)
-        ? response.data.Dados
-        : Array.isArray(response.data?.dados)
-        ? response.data.dados
-        : [];
-      const itemsLength = dadosArray.length;
-      const pagination = {
-        page:
-          response.data?.Pagina ??
-          response.data?.pagina ??
-          page,
-        perPage:
-          response.data?.RegistrosPorPagina ??
-          response.data?.registrosPorPagina ??
-          limit,
-        totalPages:
-          response.data?.TotalPaginas ??
-          response.data?.totalPaginas ??
-          undefined,
-      };
-      this.logger.log(`fetchProductPage page ${page} retornou ${itemsLength} items`);
-      return {
-        data: {
-          items: dadosArray,
-          pagination,
-        },
-      };
-    } catch (error) {
-      this.logger.error(`Falha ao buscar página ${page}`, error as Error);
-      throw error;
+  private validateResponse(data: unknown, context: string): void {
+    if (typeof data === 'string' && data.includes('<html')) {
+      throw new Error(`DAPIC retornou HTML em vez de JSON (${context})`);
     }
+  }
+
+  async fetchProductPage(page: number, limit = 100, timeoutMs = 15000): Promise<DapicPageResponse> {
+    const token = await this.ensureAccessToken();
+    const response = await axios.get(`${this.baseUrl}/v1/armazenadores/produtos`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        Pagina: page,
+        RegistrosPorPagina: limit,
+      },
+      timeout: timeoutMs,
+    });
+    this.validateResponse(response.data, `page ${page}`);
+    const dadosArray = Array.isArray(response.data?.Dados)
+      ? response.data.Dados
+      : Array.isArray(response.data?.dados)
+      ? response.data.dados
+      : [];
+    const itemsLength = dadosArray.length;
+    const pagination = {
+      page:
+        response.data?.Pagina ??
+        response.data?.pagina ??
+        page,
+      perPage:
+        response.data?.RegistrosPorPagina ??
+        response.data?.registrosPorPagina ??
+        limit,
+      totalPages:
+        response.data?.TotalPaginas ??
+        response.data?.totalPaginas ??
+        undefined,
+    };
+    this.logger.log(`fetchProductPage page ${page} retornou ${itemsLength} items`);
+    return {
+      data: {
+        items: dadosArray,
+        pagination,
+      },
+    };
   }
 
   async fetchProductDetails(externalId: string) {
     const token = await this.ensureAccessToken();
-    try {
-      const response = await axios.get(`${this.baseUrl}/v1/produtos/${externalId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return response.data;
-    } catch (error) {
-      this.logger.error(`Falha ao buscar detalhes do produto ${externalId}`, error as Error);
-      throw error;
-    }
+    const response = await axios.get(`${this.baseUrl}/v1/produtos/${externalId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+    this.validateResponse(response.data, `produto ${externalId}`);
+    return response.data;
   }
 }
