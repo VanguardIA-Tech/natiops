@@ -48,8 +48,12 @@ export class SyncWorkerService {
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
 
-    const firstPageResult = await this.processPage(1, limit, runId);
-    if (!firstPageResult.hasMore) {
+    const firstPageResult = await this.fetchWithRetry(
+      () => this.processPage(1, limit, runId),
+      maxRetries,
+      'Página 1',
+    );
+    if (!firstPageResult || !firstPageResult.hasMore) {
       return;
     }
 
@@ -125,6 +129,27 @@ export class SyncWorkerService {
     await this.syncService.updateRunProgress(runId, totalPages);
     const successPages = totalPages - failedPages.length;
     this.logger.log(`Sync concluído: ${successPages}/${totalPages} páginas processadas com sucesso`);
+  }
+
+  private async fetchWithRetry<T>(
+    fn: () => Promise<T>,
+    maxRetries: number,
+    label: string,
+  ): Promise<T | null> {
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt > maxRetries) {
+          this.logger.error(`${label} falhou após ${maxRetries + 1} tentativas: ${(error as Error).message}`);
+          throw error;
+        }
+        const delayMs = attempt * 5000;
+        this.logger.warn(`${label} falhou (tentativa ${attempt}), retry em ${delayMs / 1000}s: ${(error as Error).message}`);
+        await this.sleep(delayMs);
+      }
+    }
+    return null;
   }
 
   private sleep(ms: number) {
