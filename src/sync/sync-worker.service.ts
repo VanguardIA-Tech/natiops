@@ -44,7 +44,7 @@ export class SyncWorkerService {
     const limit =
       this.configService.get<number>('SYNC_PAGE_SIZE') ?? 200;
     const concurrency =
-      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 50;
+      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 20;
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
 
@@ -105,7 +105,7 @@ export class SyncWorkerService {
         await this.sleep(delayMs);
 
         const retryConcurrency = Math.min(concurrency, 10); // menos agressivo no retry
-        const retryTimeout = 30000; // 30s de timeout no retry
+        const retryTimeout = 40000; // 40s de timeout no retry
 
         await this.runWithConcurrency(toRetry, retryConcurrency, async (page) => {
           try {
@@ -151,7 +151,7 @@ export class SyncWorkerService {
     page: number,
     limit: number,
     runId: string,
-    timeoutMs = 15000,
+    timeoutMs = 20000,
   ) {
     const response = await this.dapicService.fetchProductPage(page, limit, timeoutMs);
     const { items, pagination } = this.extractPage(response);

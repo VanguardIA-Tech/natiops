@@ -86,7 +86,7 @@ export class DapicService {
     }
   }
 
-  async fetchProductPage(page: number, limit = 100, timeoutMs = 15000): Promise<DapicPageResponse> {
+  async fetchProductPage(page: number, limit = 100, timeoutMs = 20000): Promise<DapicPageResponse> {
     const token = await this.ensureAccessToken();
     const response = await axios.get(`${this.baseUrl}/v1/armazenadores/produtos`, {
       headers: { Authorization: `Bearer ${token}` },
