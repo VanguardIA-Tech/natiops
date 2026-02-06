@@ -1,9 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, SyncType } from '@prisma/client';
-import { createHash } from 'crypto';
+import { ConfigService } from '@nestjs/config';
+import { SyncType } from '@prisma/client';
 import { DapicService } from '../dapic/dapic.service';
 import { ProductsService } from '../products/products.service';
-import { CatalogService } from '../catalog/catalog.service';
 import { SyncService } from './sync.service';
 
 type DapicPayload = Record<string, unknown>;
@@ -17,7 +16,7 @@ export class SyncWorkerService {
     private readonly syncService: SyncService,
     private readonly dapicService: DapicService,
     private readonly productsService: ProductsService,
-    private readonly catalogService: CatalogService,
+    private readonly configService: ConfigService,
   ) {}
 
   async processPending(type: SyncType) {
@@ -42,71 +41,61 @@ export class SyncWorkerService {
 
   private async executeRun(runId: string, type: SyncType) {
     this.logger.log(`Iniciando run ${runId} (${type})`);
-    const checkpoint = await this.syncService.getCheckpoint(type);
-    const limit = 100;
-    const concurrency = 5;
-    const startPage = checkpoint?.page ? checkpoint.page + 1 : 1;
-    const recordCheckpoint = this.createCheckpointRecorder(type, runId, checkpoint?.page ?? 0);
-    const firstPageResult = await this.processPage(startPage, limit, runId, type, recordCheckpoint);
+    const limit =
+      this.configService.get<number>('SYNC_PAGE_SIZE') ?? 200;
+    const concurrency =
+      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 50;
+
+    const firstPageResult = await this.processPage(1, limit, runId);
     if (!firstPageResult.hasMore) {
       return;
     }
+
     const totalPages = firstPageResult.pagination?.totalPages;
     if (!totalPages) {
-      let nextPage = startPage + 1;
+      let nextPage = 2;
       while (true) {
-        const pageResult = await this.processPage(nextPage, limit, runId, type, recordCheckpoint);
-        if (!pageResult.hasMore) {
-          break;
-        }
+        const pageResult = await this.processPage(nextPage, limit, runId);
+        if (!pageResult.hasMore) break;
         nextPage += 1;
       }
       return;
     }
+
+    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency})`);
+
     const remainingPages: number[] = [];
-    for (let next = startPage + 1; next <= totalPages; next += 1) {
+    for (let next = 2; next <= totalPages; next += 1) {
       remainingPages.push(next);
     }
+
     if (remainingPages.length) {
-      await this.processPagesConcurrently(
-        remainingPages,
-        limit,
-        runId,
-        type,
-        recordCheckpoint,
-        concurrency,
-      );
+      let processed = 1;
+      await this.runWithConcurrency(remainingPages, concurrency, async (page) => {
+        await this.processPage(page, limit, runId);
+        processed++;
+        if (processed % 100 === 0) {
+          this.logger.log(`Progresso: ${processed}/${totalPages} páginas`);
+          await this.syncService.updateRunProgress(runId, page);
+        }
+      });
     }
+
+    await this.syncService.updateRunProgress(runId, totalPages);
+    this.logger.log(`Sync concluído: ${totalPages} páginas processadas`);
   }
 
-  private createCheckpointRecorder(
-    type: SyncType,
-    runId: string,
-    initialPage: number,
-  ) {
-    let maxProcessedPage = initialPage;
-    return async (page: number) => {
-      if (page <= maxProcessedPage) {
-        return;
-      }
-      maxProcessedPage = page;
-      await this.syncService.upsertCheckpoint(type, page, runId);
-    };
-  }
-
-  private async processPagesConcurrently(
-    pages: number[],
-    limit: number,
-    runId: string,
-    type: SyncType,
-    recordCheckpoint: (page: number) => Promise<void>,
+  private async runWithConcurrency<T>(
+    items: T[],
     concurrency: number,
+    fn: (item: T) => Promise<void>,
   ) {
-    let cursor = 0;
+    let index = 0;
     const workers = Array.from({ length: concurrency }, async () => {
-      while (cursor < pages.length) {
-        const page = pages[cursor++];
-        await this.processPage(page, limit, runId, type, recordCheckpoint);
+      while (index < items.length) {
+        const i = index++;
+        if (i >= items.length) break;
+        await fn(items[i]);
       }
     });
     await Promise.all(workers);
@@ -116,31 +105,24 @@ export class SyncWorkerService {
     page: number,
     limit: number,
     runId: string,
-    type: SyncType,
-    recordCheckpoint: (page: number) => Promise<void>,
   ) {
     const response = await this.dapicService.fetchProductPage(page, limit);
     const { items, pagination } = this.extractPage(response);
     if (!items.length) {
-      this.logger.log(`Página ${page} não retornou itens`);
       return { pagination, hasMore: false };
     }
-    this.logger.log(`Página ${page} retornou ${items.length} itens`);
-    let lastExternalId: string | undefined;
+
+    const productItems: Array<{ externalId: string; payload: ReturnType<SyncWorkerService['mapProduct']> }> = [];
     for (const item of items) {
       const externalId = this.extractExternalId(item);
-      if (!externalId) {
-        continue;
-      }
-      const hash = this.hashPayload(item);
-      const productPayload = this.mapProduct(item);
-      await this.productsService.syncUpsert(externalId, productPayload);
-      await this.syncService.recordAudit(runId, externalId, 'UPSERT', item as Prisma.InputJsonValue, hash);
-      await this.syncCatalogItem(externalId);
-      lastExternalId = externalId;
+      if (!externalId) continue;
+      productItems.push({ externalId, payload: this.mapProduct(item) });
     }
-    await recordCheckpoint(page);
-    await this.syncService.updateRunProgress(runId, page, lastExternalId);
+
+    if (productItems.length) {
+      await this.productsService.bulkUpsert(productItems);
+    }
+
     const totalPages = pagination?.totalPages;
     const hasMore = totalPages ? page < totalPages : items.length === limit;
     return { pagination, hasMore };
@@ -175,34 +157,9 @@ export class SyncWorkerService {
     };
   }
 
-  private async syncCatalogItem(externalId: string) {
-    try {
-      const detail = await this.dapicService.fetchProductDetails(externalId);
-      if (!detail) {
-        return;
-      }
-      const catalogPayload = this.mapCatalogPayload(detail);
-      await this.catalogService.upsert(externalId, catalogPayload);
-    } catch (error) {
-      this.logger.warn(`Falha ao sincronizar catálogo ${externalId}`, error as Error);
-    }
-  }
-
-  private mapCatalogPayload(payload: DapicPayload) {
-    return {
-      referencia: this.extractString(payload, ['Referencia']),
-      descricaoFabrica: this.extractString(payload, ['DescricaoFabrica']),
-      status: this.extractString(payload, ['Status']),
-      unidadeMedida: this.extractString(payload, ['UnidadeMedida', 'SiglaUnidadeMedida']),
-      fotos: this.extractStringArray(payload, ['Fotos']),
-    };
-  }
-
   private extractStock(payload: DapicPayload) {
     const candidate = payload['estoque_total'] ?? payload['stock'] ?? payload['quantidade'] ?? payload['qtd'];
-    if (typeof candidate === 'number') {
-      return candidate;
-    }
+    if (typeof candidate === 'number') return candidate;
     const parsed = Number(candidate);
     return Number.isFinite(parsed) ? parsed : 0;
   }
@@ -210,71 +167,28 @@ export class SyncWorkerService {
   private extractString(payload: DapicPayload, keys: string[]) {
     for (const key of keys) {
       const value = payload[key];
-      if (typeof value === 'string' && value.trim().length) {
-        return value;
-      }
+      if (typeof value === 'string' && value.trim().length) return value;
     }
     return null;
   }
 
-  private extractStringArray(payload: DapicPayload, keys: string[]) {
-    for (const key of keys) {
-      if (!Object.prototype.hasOwnProperty.call(payload, key)) {
-        continue;
-      }
-      const value = payload[key];
-      if (Array.isArray(value)) {
-        return value.filter((entry): entry is string => typeof entry === 'string');
-      }
-    }
-    return undefined;
-  }
-
   private extractNumber(payload: DapicPayload, keys: string[]) {
     for (const key of keys) {
-      if (!Object.prototype.hasOwnProperty.call(payload, key)) {
-        continue;
-      }
+      if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
       const value = payload[key];
-      if (value === null) {
-        return null;
-      }
-      if (typeof value === 'number') {
-        return value;
-      }
+      if (value === null) return null;
+      if (typeof value === 'number') return value;
       const parsed = Number(value);
-      if (!Number.isNaN(parsed)) {
-        return parsed;
-      }
+      if (!Number.isNaN(parsed)) return parsed;
     }
     return undefined;
   }
 
   private extractExternalId(payload: DapicPayload) {
     const candidate = payload['externalId'] ?? payload['IdProduto'] ?? payload['id'] ?? payload['codigoProduto'];
-    if (typeof candidate === 'string' && candidate.trim().length) {
-      return candidate;
-    }
-    if (typeof candidate === 'number') {
-      return String(candidate);
-    }
+    if (typeof candidate === 'string' && candidate.trim().length) return candidate;
+    if (typeof candidate === 'number') return String(candidate);
     return null;
-  }
-
-  private hashPayload(payload: DapicPayload) {
-    const stable = this.stableStringify(payload);
-    return createHash('sha256').update(stable).digest('hex');
-  }
-
-  private stableStringify(value: unknown): string {
-    if (Array.isArray(value)) {
-      return `[${value.map((item) => this.stableStringify(item)).join(',')}]`;
-    }
-    if (value && typeof value === 'object') {
-      const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
-      return `{${entries.map(([key, val]) => `${key}:${this.stableStringify(val)}`).join(',')}}`;
-    }
-    return JSON.stringify(value);
   }
 
   private extractPage(response: unknown) {

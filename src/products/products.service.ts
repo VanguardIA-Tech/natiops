@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { BodyProductsDto } from './dto/query-products.dto';
 
 type ProductSyncedPayload = Pick<
   Prisma.ProductCreateInput,
@@ -30,29 +29,16 @@ export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findByExternalId(externalId: string) {
-    this.logger.log(`Finding product by externalId: ${externalId}`);
-    const product = await this.prisma.product.findUnique({ where: { externalId } });
-    if (!product) {
-      return null;
-    }
-    return product;
+    return this.prisma.product.findUnique({ where: { externalId } });
   }
 
   async findById(id: string) {
-    this.logger.log(`Finding product details by id: ${id}`);
-    const product = await this.prisma.product.findUnique({
-      where: { externalId: id },
-    });
-    if (!product) {
-      return null;
-    }
-    return product;
+    return this.prisma.product.findUnique({ where: { externalId: id } });
   }
 
   async getCapacityByItemName(nome?: string): Promise<
     { nome: string; quantidadeDisponivel: number }[]
   > {
-    this.logger.log(`Getting capacity by item name: ${nome}`);
     const products = await this.prisma.product.findMany({
       select: { externalId: true, name: true, quantidadeReal: true },
     });
@@ -65,24 +51,95 @@ export class ProductsService {
         ).map(f => f.externalId)
       : products.map(p => p.externalId);
 
-    const list = products
+    return products
       .filter(p => filtered.includes(p.externalId))
       .sort((a, b) => (b.quantidadeReal ?? 0) - (a.quantidadeReal ?? 0))
       .map(p => ({
         nome: p.name,
         quantidadeDisponivel: p.quantidadeReal ?? 0,
       }));
+  }
 
-    return list;
+  async bulkUpsert(items: Array<{ externalId: string; payload: ProductSyncedPayload }>) {
+    if (items.length === 0) return;
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const chunk = items.slice(i, i + BATCH_SIZE);
+      await this.executeBulkUpsert(chunk);
+    }
+  }
+
+  private async executeBulkUpsert(items: Array<{ externalId: string; payload: ProductSyncedPayload }>) {
+    const FIELDS_PER_ROW = 18;
+    const values: unknown[] = [];
+    const valuesClauses: string[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const offset = i * FIELDS_PER_ROW;
+      const { externalId, payload } = items[i];
+
+      valuesClauses.push(
+        `(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, NOW(), NOW())`,
+      );
+
+      values.push(
+        externalId,
+        payload.name,
+        payload.idProduto ?? null,
+        payload.idGradeProduto ?? null,
+        payload.idGradeProdutoEstoque ?? null,
+        payload.cor ?? null,
+        payload.tamanho ?? null,
+        payload.grupo ?? null,
+        payload.marca ?? null,
+        payload.colecao ?? null,
+        payload.quantidade ?? null,
+        payload.quantidadeReal ?? null,
+        payload.quantidadeComprometida ?? null,
+        payload.valor ?? null,
+        payload.valorCusto ?? null,
+        payload.stockTotal,
+        payload.idArmazenador ?? null,
+        payload.armazenador ?? null,
+      );
+    }
+
+    const sql = `
+      INSERT INTO "Product" (
+        "id", "externalId", "Produto", "IdProduto", "IdGradeProduto", "IdGradeProdutoEstoque",
+        "Cor", "Tamanho", "Grupo", "Marca", "Colecao", "Quantidade",
+        "QuantidadeReal", "QuantidadeComprometida", "Valor", "ValorCusto",
+        "stockTotal", "IdArmazenador", "Armazenador", "createdAt", "updatedAt"
+      ) VALUES ${valuesClauses.join(', ')}
+      ON CONFLICT ("externalId") DO UPDATE SET
+        "Produto" = EXCLUDED."Produto",
+        "IdProduto" = EXCLUDED."IdProduto",
+        "IdGradeProduto" = EXCLUDED."IdGradeProduto",
+        "IdGradeProdutoEstoque" = EXCLUDED."IdGradeProdutoEstoque",
+        "Cor" = EXCLUDED."Cor",
+        "Tamanho" = EXCLUDED."Tamanho",
+        "Grupo" = EXCLUDED."Grupo",
+        "Marca" = EXCLUDED."Marca",
+        "Colecao" = EXCLUDED."Colecao",
+        "Quantidade" = EXCLUDED."Quantidade",
+        "QuantidadeReal" = EXCLUDED."QuantidadeReal",
+        "QuantidadeComprometida" = EXCLUDED."QuantidadeComprometida",
+        "Valor" = EXCLUDED."Valor",
+        "ValorCusto" = EXCLUDED."ValorCusto",
+        "stockTotal" = EXCLUDED."stockTotal",
+        "IdArmazenador" = EXCLUDED."IdArmazenador",
+        "Armazenador" = EXCLUDED."Armazenador",
+        "updatedAt" = NOW()
+    `;
+
+    await this.prisma.$executeRawUnsafe(sql, ...values);
   }
 
   async syncUpsert(externalId: string, payload: ProductSyncedPayload) {
-    const createData: Prisma.ProductCreateInput = { externalId, ...payload };
-    const updateData: Prisma.ProductUpdateInput = { ...payload };
     await this.prisma.product.upsert({
       where: { externalId },
-      create: createData,
-      update: updateData,
+      create: { externalId, ...payload },
+      update: { ...payload },
     });
   }
 
@@ -91,13 +148,10 @@ export class ProductsService {
       orderBy: { name: 'asc' },
       select: { externalId: true, name: true },
     });
-    this.logger.log(`Products found: ${products.length}`);
     if (!query?.trim()) {
       return products;
     }
-    const filteredProducts = this.filterProductsByName(products, query);
-    this.logger.log(`Products matching query "${query}": ${filteredProducts.length}`);
-    return filteredProducts;
+    return this.filterProductsByName(products, query);
   }
 
   private normalizeText(text?: string) {
@@ -109,7 +163,6 @@ export class ProductsService {
   }
 
   private filterProductsByName(products: { externalId: string; name?: string }[], query: string) {
-    this.logger.log(`Filtering products by name: ${query}`);
     const normalizedQuery = this.normalizeText(query);
     const queryWords = normalizedQuery.split(/\s+/).filter(Boolean);
     if (!queryWords.length) {

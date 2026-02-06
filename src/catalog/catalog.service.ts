@@ -1,69 +1,22 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
-
-type CatalogPayload = {
-  referencia?: string | null;
-  descricaoFabrica?: string | null;
-  status?: string | null;
-  unidadeMedida?: string | null;
-  fotos?: string[] | null;
-};
+import { Injectable, Logger } from '@nestjs/common';
+import { DapicService } from '../dapic/dapic.service';
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(CatalogService.name);
 
-  async upsert(externalId: string, payload: CatalogPayload) {
-    const normalized = this.normalizePayload(payload);
-    const createData: Prisma.CatalogItemCreateInput = { externalId, ...normalized };
-    const updateData: Prisma.CatalogItemUpdateInput = { ...normalized };
-    await this.prisma.catalogItem.upsert({
-      where: { externalId },
-      create: createData,
-      update: updateData,
-    });
-  }
+  constructor(private readonly dapicService: DapicService) {}
 
-  private normalizePayload(payload: CatalogPayload) {
-    return {
-      referencia: payload.referencia ?? undefined,
-      descricaoFabrica: payload.descricaoFabrica ?? undefined,
-      status: payload.status ?? undefined,
-      unidadeMedida: payload.unidadeMedida ?? undefined,
-      fotos: payload.fotos ?? undefined,
-    };
-  }
-
-  async findByReferencia(referencia: string) {
-    return this.prisma.catalogItem.findUnique({
-      where: { referencia },
-    });
-  }
-
-  async getImagesByReferencia(referencia: string) {
-    const item = await this.findByReferencia(referencia);
-    if (!item) {
+  async getImagesByExternalId(externalId: string): Promise<string[] | null> {
+    try {
+      const detail = await this.dapicService.fetchProductDetails(externalId);
+      if (!detail) return null;
+      const fotos = (detail as Record<string, unknown>)['Fotos'];
+      if (!Array.isArray(fotos)) return [];
+      return fotos.filter((entry): entry is string => typeof entry === 'string');
+    } catch (error) {
+      this.logger.warn(`Falha ao buscar fotos do produto ${externalId}`, error as Error);
       return null;
     }
-    const fotos = item.fotos;
-    if (!Array.isArray(fotos)) {
-      return [];
-    }
-    return fotos.filter((value): value is string => typeof value === 'string');
-  }
-
-  async getDetailsByReferencia(referencia: string) {
-    const item = await this.findByReferencia(referencia);
-    if (!item) {
-      return null;
-    }
-    return {
-      externalId: item.externalId,
-      referencia: item.referencia,
-      descricaoFabrica: item.descricaoFabrica,
-      status: item.status,
-      unidadeDeMedida: item.unidadeMedida,
-    };
   }
 }

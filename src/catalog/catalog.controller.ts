@@ -7,51 +7,30 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CatalogService } from './catalog.service';
-import { CatalogItemDetailsResponseDto } from './dto/catalog-item-details-response.dto';
 
 @ApiTags('Catálogo')
 @Controller('catalogo')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
 
-  @Get(':referencia/images')
-  @ApiOperation({ summary: 'Retorna as URLs das imagens de um item de catálogo' })
+  @Get(':externalId/images')
+  @ApiOperation({ summary: 'Retorna as URLs das imagens de um produto via DAPIC' })
   @ApiParam({
-    name: 'referencia',
-    description: 'Referência única do item no catálogo',
-    example: 'REF-123',
+    name: 'externalId',
+    description: 'ID externo do produto',
+    example: '70',
   })
   @ApiOkResponse({
     description: 'Lista de URLs de imagens',
     type: String,
     isArray: true,
   })
-  @ApiNotFoundResponse({ description: 'Item de catálogo não encontrado' })
-  async getImages(@Param('referencia') referencia: string) {
-    const images = await this.catalogService.getImagesByReferencia(referencia);
+  @ApiNotFoundResponse({ description: 'Produto não encontrado' })
+  async getImages(@Param('externalId') externalId: string) {
+    const images = await this.catalogService.getImagesByExternalId(externalId);
     if (!images) {
-      throw new NotFoundException('Item de catálogo não encontrado');
+      throw new NotFoundException('Produto não encontrado');
     }
     return images;
-  }
-
-  @Get(':referencia/details')
-  @ApiOperation({ summary: 'Retorna os detalhes de um item de catálogo' })
-  @ApiParam({
-    name: 'referencia',
-    description: 'Referência única do item no catálogo',
-    example: 'REF-123',
-  })
-  @ApiOkResponse({
-    description: 'Detalhes principais do item de catálogo',
-    type: CatalogItemDetailsResponseDto,
-  })
-  @ApiNotFoundResponse({ description: 'Item de catálogo não encontrado' })
-  async getDetails(@Param('referencia') referencia: string) {
-    const details = await this.catalogService.getDetailsByReferencia(referencia);
-    if (!details) {
-      throw new NotFoundException('Item de catálogo não encontrado');
-    }
-    return details;
   }
 }
