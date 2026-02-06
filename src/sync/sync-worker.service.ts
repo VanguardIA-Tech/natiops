@@ -7,6 +7,39 @@ import { SyncService } from './sync.service';
 
 type DapicPayload = Record<string, unknown>;
 
+/**
+ * Rate limiter global: garante no máximo `rps` requests por segundo
+ * usando um intervalo mínimo entre requests com fila de espera.
+ */
+class RateLimiter {
+  private queue: Array<() => void> = [];
+  private lastCall = 0;
+  private readonly intervalMs: number;
+
+  constructor(rps: number) {
+    this.intervalMs = Math.ceil(1000 / rps);
+  }
+
+  async acquire(): Promise<void> {
+    return new Promise((resolve) => {
+      this.queue.push(resolve);
+      if (this.queue.length === 1) this.processQueue();
+    });
+  }
+
+  private processQueue() {
+    if (this.queue.length === 0) return;
+    const now = Date.now();
+    const wait = Math.max(0, this.lastCall + this.intervalMs - now);
+    setTimeout(() => {
+      this.lastCall = Date.now();
+      const next = this.queue.shift();
+      if (next) next();
+      this.processQueue();
+    }, wait);
+  }
+}
+
 @Injectable()
 export class SyncWorkerService {
   private readonly logger = new Logger(SyncWorkerService.name);
@@ -45,10 +78,11 @@ export class SyncWorkerService {
       this.configService.get<number>('SYNC_PAGE_SIZE') ?? 200;
     const concurrency =
       this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 10;
-    const throttleMs =
-      this.configService.get<number>('SYNC_THROTTLE_MS') ?? 150;
+    const rps =
+      this.configService.get<number>('SYNC_REQUESTS_PER_SECOND') ?? 5;
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
+    const limiter = new RateLimiter(rps);
 
     const firstPageResult = await this.fetchWithRetry(
       () => this.processPage(1, limit, runId),
@@ -70,7 +104,7 @@ export class SyncWorkerService {
       return;
     }
 
-    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency}, throttle=${throttleMs}ms)`);
+    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency}, rps=${rps})`);
 
     const remainingPages: number[] = [];
     for (let next = 2; next <= totalPages; next += 1) {
@@ -83,6 +117,7 @@ export class SyncWorkerService {
 
     if (remainingPages.length) {
       await this.runWithConcurrency(remainingPages, concurrency, async (page) => {
+        await limiter.acquire();
         try {
           await this.processPage(page, limit, runId);
         } catch (error) {
@@ -94,7 +129,6 @@ export class SyncWorkerService {
           this.logger.log(`Progresso: ${processed}/${totalPages} páginas (${failedPages.length} falhas)`);
           await this.syncService.updateRunProgress(runId, page);
         }
-        if (throttleMs > 0) await this.sleep(throttleMs);
       });
     }
 
@@ -113,15 +147,16 @@ export class SyncWorkerService {
 
         const retryConcurrency = Math.min(concurrency, 5); // bem conservador no retry
         const retryTimeout = 40000; // 40s de timeout no retry
+        const retryLimiter = new RateLimiter(Math.max(rps / 2, 1)); // metade do rps no retry
 
         await this.runWithConcurrency(toRetry, retryConcurrency, async (page) => {
+          await retryLimiter.acquire();
           try {
             await this.processPage(page, limit, runId, retryTimeout);
           } catch (error) {
             this.logger.warn(`Página ${page} falhou no retry ${attempt}: ${(error as Error).message}`);
             stillFailed.push(page);
           }
-          await this.sleep(300); // throttle mais lento no retry
         });
       }
 
