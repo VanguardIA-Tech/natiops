@@ -44,7 +44,9 @@ export class SyncWorkerService {
     const limit =
       this.configService.get<number>('SYNC_PAGE_SIZE') ?? 200;
     const concurrency =
-      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 20;
+      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 10;
+    const throttleMs =
+      this.configService.get<number>('SYNC_THROTTLE_MS') ?? 150;
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
 
@@ -68,7 +70,7 @@ export class SyncWorkerService {
       return;
     }
 
-    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency})`);
+    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency}, throttle=${throttleMs}ms)`);
 
     const remainingPages: number[] = [];
     for (let next = 2; next <= totalPages; next += 1) {
@@ -92,6 +94,7 @@ export class SyncWorkerService {
           this.logger.log(`Progresso: ${processed}/${totalPages} páginas (${failedPages.length} falhas)`);
           await this.syncService.updateRunProgress(runId, page);
         }
+        if (throttleMs > 0) await this.sleep(throttleMs);
       });
     }
 
@@ -108,7 +111,7 @@ export class SyncWorkerService {
         this.logger.log(`Retry tentativa ${attempt}/${maxRetries}: ${toRetry.length} páginas (aguardando ${delayMs / 1000}s)`);
         await this.sleep(delayMs);
 
-        const retryConcurrency = Math.min(concurrency, 10); // menos agressivo no retry
+        const retryConcurrency = Math.min(concurrency, 5); // bem conservador no retry
         const retryTimeout = 40000; // 40s de timeout no retry
 
         await this.runWithConcurrency(toRetry, retryConcurrency, async (page) => {
@@ -118,6 +121,7 @@ export class SyncWorkerService {
             this.logger.warn(`Página ${page} falhou no retry ${attempt}: ${(error as Error).message}`);
             stillFailed.push(page);
           }
+          await this.sleep(300); // throttle mais lento no retry
         });
       }
 
