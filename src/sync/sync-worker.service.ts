@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SyncType } from '@prisma/client';
+import { SyncPageError, SyncType } from '@prisma/client';
+import { AxiosError } from 'axios';
 import { DapicService } from '../dapic/dapic.service';
 import { ProductsService } from '../products/products.service';
 import { SyncService } from './sync.service';
@@ -44,6 +45,7 @@ class RateLimiter {
 export class SyncWorkerService {
   private readonly logger = new Logger(SyncWorkerService.name);
   private running = new Set<SyncType>();
+  private rateLimitPause: Promise<void> | null = null;
 
   constructor(
     private readonly syncService: SyncService,
@@ -82,7 +84,11 @@ export class SyncWorkerService {
       this.configService.get<number>('SYNC_REQUESTS_PER_SECOND') ?? 5;
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
+    const pauseMinutes =
+      this.configService.get<number>('SYNC_429_PAUSE_MINUTES') ?? 15;
     const limiter = new RateLimiter(rps);
+
+    this.rateLimitPause = null;
 
     const firstPageResult = await this.fetchWithRetry(
       () => this.processPage(1, limit, runId),
@@ -111,63 +117,146 @@ export class SyncWorkerService {
       remainingPages.push(next);
     }
 
-    // Fase 1: processar todas as páginas, coletar falhas
-    const failedPages: number[] = [];
+    // Fase 1: processar todas as páginas, persistir falhas no banco
     let processed = 1;
+    let failCount = 0;
 
     if (remainingPages.length) {
       await this.runWithConcurrency(remainingPages, concurrency, async (page) => {
+        if (this.rateLimitPause) await this.rateLimitPause;
         await limiter.acquire();
         try {
           await this.processPage(page, limit, runId);
         } catch (error) {
-          this.logger.warn(`Página ${page} falhou, será retentada: ${(error as Error).message}`);
-          failedPages.push(page);
+          const httpStatus = this.extractHttpStatus(error);
+          const message = error instanceof Error ? error.message : String(error);
+          await this.syncService.recordPageError(runId, page, httpStatus, message);
+          failCount++;
+
+          if (httpStatus === 429) {
+            this.logger.warn(`Página ${page}: 429 rate limit — pausando todos os workers por ${pauseMinutes} min`);
+            await this.handleRateLimitPause(pauseMinutes);
+            // Retry imediato desta página após pausa
+            try {
+              await this.processPage(page, limit, runId);
+              await this.resolvePageErrorByRunAndPage(runId, page);
+              failCount--;
+            } catch (retryErr) {
+              const retryStatus = this.extractHttpStatus(retryErr);
+              const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+              await this.syncService.recordPageError(runId, page, retryStatus, retryMsg);
+              this.logger.warn(`Página ${page} falhou novamente após pausa 429: ${retryMsg}`);
+            }
+          } else {
+            this.logger.warn(`Página ${page} falhou, será retentada: ${message}`);
+          }
         }
         processed++;
         if (processed % 100 === 0) {
-          this.logger.log(`Progresso: ${processed}/${totalPages} páginas (${failedPages.length} falhas)`);
+          this.logger.log(`Progresso: ${processed}/${totalPages} páginas (${failCount} falhas)`);
           await this.syncService.updateRunProgress(runId, page);
         }
       });
     }
 
-    // Fase 2: retry das páginas que falharam (com timeout maior e espera entre tentativas)
-    if (failedPages.length > 0) {
-      this.logger.log(`Retentando ${failedPages.length} páginas que falharam...`);
-      const stillFailed: number[] = [];
+    // Fase 2: retry das páginas que falharam (do banco)
+    const pendingPages = await this.syncService.getPendingRetryPages(runId);
+    if (pendingPages.length > 0) {
+      this.logger.log(`Retentando ${pendingPages.length} páginas que falharam (do banco)...`);
+
+      const retryConcurrency = Math.min(concurrency, 5);
+      const retryRps = Math.max(rps / 2, 1);
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        const toRetry = attempt === 1 ? failedPages : stillFailed.splice(0);
+        const toRetry = await this.syncService.getPendingRetryPages(runId);
         if (toRetry.length === 0) break;
 
-        const delayMs = attempt * 5000; // 5s, 10s, 15s entre tentativas
+        const delayMs = attempt * 5000;
         this.logger.log(`Retry tentativa ${attempt}/${maxRetries}: ${toRetry.length} páginas (aguardando ${delayMs / 1000}s)`);
         await this.sleep(delayMs);
 
-        const retryConcurrency = Math.min(concurrency, 5); // bem conservador no retry
-        const retryTimeout = 40000; // 40s de timeout no retry
-        const retryLimiter = new RateLimiter(Math.max(rps / 2, 1)); // metade do rps no retry
+        const retryTimeout = 40000;
+        const retryLimiter = new RateLimiter(retryRps);
 
-        await this.runWithConcurrency(toRetry, retryConcurrency, async (page) => {
+        await this.runWithConcurrency(toRetry, retryConcurrency, async (pageError: SyncPageError) => {
+          if (this.rateLimitPause) await this.rateLimitPause;
           await retryLimiter.acquire();
           try {
-            await this.processPage(page, limit, runId, retryTimeout);
+            await this.processPage(pageError.page, limit, runId, retryTimeout);
+            await this.syncService.resolvePageError(pageError.id);
           } catch (error) {
-            this.logger.warn(`Página ${page} falhou no retry ${attempt}: ${(error as Error).message}`);
-            stillFailed.push(page);
+            const httpStatus = this.extractHttpStatus(error);
+            const message = error instanceof Error ? error.message : String(error);
+            await this.syncService.recordPageError(runId, pageError.page, httpStatus, message);
+
+            if (httpStatus === 429) {
+              this.logger.warn(`Página ${pageError.page}: 429 no retry — pausando ${pauseMinutes} min`);
+              await this.handleRateLimitPause(pauseMinutes);
+              // Retry imediato após pausa
+              try {
+                await this.processPage(pageError.page, limit, runId, retryTimeout);
+                await this.syncService.resolvePageError(pageError.id);
+              } catch (retryErr) {
+                const retryStatus = this.extractHttpStatus(retryErr);
+                const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+                await this.syncService.recordPageError(runId, pageError.page, retryStatus, retryMsg);
+                this.logger.warn(`Página ${pageError.page} falhou novamente após pausa 429: ${retryMsg}`);
+              }
+            } else {
+              this.logger.warn(`Página ${pageError.page} falhou no retry ${attempt}: ${message}`);
+            }
           }
         });
       }
 
-      if (stillFailed.length > 0) {
-        this.logger.error(`${stillFailed.length} páginas falharam após ${maxRetries} tentativas: [${stillFailed.slice(0, 20).join(', ')}${stillFailed.length > 20 ? '...' : ''}]`);
+      // Marcar restantes como PERMANENT_FAILURE
+      const remaining = await this.syncService.getPendingRetryPages(runId);
+      for (const pageError of remaining) {
+        await this.syncService.markPagePermanentFailure(pageError.id);
+      }
+      if (remaining.length > 0) {
+        this.logger.error(`${remaining.length} páginas marcadas como PERMANENT_FAILURE: [${remaining.slice(0, 20).map((p: SyncPageError) => p.page).join(', ')}${remaining.length > 20 ? '...' : ''}]`);
       }
     }
 
+    // Log final com contagens do banco
+    const counts = await this.syncService.countPageErrors(runId);
     await this.syncService.updateRunProgress(runId, totalPages);
-    const successPages = totalPages - failedPages.length;
-    this.logger.log(`Sync concluído: ${successPages}/${totalPages} páginas processadas com sucesso`);
+    const resolved = counts['RESOLVED'] ?? 0;
+    const permanent = counts['PERMANENT_FAILURE'] ?? 0;
+    this.logger.log(`Sync concluído: ${totalPages - permanent}/${totalPages} páginas OK (${resolved} recuperadas em retry, ${permanent} falhas permanentes)`);
+  }
+
+  private extractHttpStatus(error: unknown): number | null {
+    if (error instanceof AxiosError) {
+      return error.response?.status ?? null;
+    }
+    if (error && typeof error === 'object' && 'status' in error) {
+      const status = (error as any).status;
+      return typeof status === 'number' ? status : null;
+    }
+    return null;
+  }
+
+  private handleRateLimitPause(pauseMinutes: number): Promise<void> {
+    if (this.rateLimitPause) {
+      return this.rateLimitPause;
+    }
+    const ms = pauseMinutes * 60 * 1000;
+    this.logger.warn(`Pausa global de ${pauseMinutes} min iniciada (rate limit 429)`);
+    this.rateLimitPause = this.sleep(ms).then(() => {
+      this.rateLimitPause = null;
+      this.logger.log(`Pausa global de ${pauseMinutes} min encerrada`);
+    });
+    return this.rateLimitPause;
+  }
+
+  private async resolvePageErrorByRunAndPage(syncRunId: string, page: number) {
+    const errors = await this.syncService.getPendingRetryPages(syncRunId);
+    const match = errors.find((e: SyncPageError) => e.page === page);
+    if (match) {
+      await this.syncService.resolvePageError(match.id);
+    }
   }
 
   private async fetchWithRetry<T>(

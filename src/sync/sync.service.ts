@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { Prisma, SyncStatus, SyncType } from '@prisma/client';
+import { Prisma, SyncPageErrorStatus, SyncStatus, SyncType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -96,6 +96,22 @@ export class SyncService {
     });
   }
 
+  async recordAuditBatch(
+    runId: string,
+    entries: Array<{ externalId: string; action: string; payload: Prisma.InputJsonValue; hash: string }>,
+  ) {
+    if (entries.length === 0) return;
+    await this.prisma.syncAudit.createMany({
+      data: entries.map((e) => ({
+        syncRunId: runId,
+        externalId: e.externalId,
+        action: e.action,
+        payload: e.payload,
+        hash: e.hash,
+      })),
+    });
+  }
+
   async getCheckpoint(type: SyncType) {
     return this.prisma.syncCheckpoint.findUnique({
       where: { type },
@@ -113,7 +129,66 @@ export class SyncService {
   async findRunById(id: string) {
     return this.prisma.syncRun.findUnique({
       where: { id },
-      include: { auditEntries: true, checkpoints: true },
+      include: { auditEntries: true, checkpoints: true, pageErrors: true },
     });
+  }
+
+  async recordPageError(
+    syncRunId: string,
+    page: number,
+    httpStatus: number | null,
+    errorMessage: string | null,
+  ) {
+    await this.prisma.syncPageError.upsert({
+      where: { syncRunId_page: { syncRunId, page } },
+      create: {
+        syncRunId,
+        page,
+        httpStatus,
+        errorMessage,
+        attempt: 1,
+        status: SyncPageErrorStatus.PENDING_RETRY,
+      },
+      update: {
+        httpStatus,
+        errorMessage,
+        attempt: { increment: 1 },
+        status: SyncPageErrorStatus.PENDING_RETRY,
+      },
+    });
+  }
+
+  async getPendingRetryPages(syncRunId: string) {
+    return this.prisma.syncPageError.findMany({
+      where: { syncRunId, status: SyncPageErrorStatus.PENDING_RETRY },
+      orderBy: { page: 'asc' },
+    });
+  }
+
+  async resolvePageError(id: string) {
+    await this.prisma.syncPageError.update({
+      where: { id },
+      data: { status: SyncPageErrorStatus.RESOLVED },
+    });
+  }
+
+  async markPagePermanentFailure(id: string) {
+    await this.prisma.syncPageError.update({
+      where: { id },
+      data: { status: SyncPageErrorStatus.PERMANENT_FAILURE },
+    });
+  }
+
+  async countPageErrors(syncRunId: string) {
+    const results = await this.prisma.syncPageError.groupBy({
+      by: ['status'],
+      where: { syncRunId },
+      _count: { status: true },
+    });
+    const counts: Record<string, number> = {};
+    for (const r of results) {
+      counts[r.status] = r._count.status;
+    }
+    return counts;
   }
 }

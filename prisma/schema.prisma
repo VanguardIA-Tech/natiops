@@ -23,6 +23,12 @@ enum HoldStatus {
   EXPIRED
 }
 
+enum SyncPageErrorStatus {
+  PENDING_RETRY
+  RESOLVED
+  PERMANENT_FAILURE
+}
+
 model Product {
   id                     String   @id @default(uuid())
   externalId             String   @unique
@@ -73,6 +79,7 @@ model SyncRun {
   errorMessage   String?
   auditEntries   SyncAudit[]
   checkpoints    SyncCheckpoint[]
+  pageErrors     SyncPageError[]
 }
 
 model SyncCheckpoint {
@@ -84,6 +91,22 @@ model SyncCheckpoint {
   updatedAt  DateTime @updatedAt
 
   @@unique([type])
+}
+
+model SyncPageError {
+  id           String              @id @default(uuid())
+  syncRun      SyncRun             @relation(fields: [syncRunId], references: [id])
+  syncRunId    String
+  page         Int
+  httpStatus   Int?
+  errorMessage String?
+  attempt      Int                 @default(1)
+  status       SyncPageErrorStatus @default(PENDING_RETRY)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@unique([syncRunId, page])
+  @@index([syncRunId, status])
 }
 
 model SyncAudit {
