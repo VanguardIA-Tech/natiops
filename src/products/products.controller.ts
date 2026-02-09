@@ -33,9 +33,8 @@ export class ProductsController {
   })
   async list(@Body() payload: BodyProductsDto) {
     const query = payload.nome ?? '';
-    this.logger.log(`Query: ${query}`);
-    this.logger.log(`Chamando método search com payload: ${JSON.stringify(query)}`);
-    return this.productsService.search(query);
+    this.logger.log(`Query: ${query} | cor: ${payload.cor ?? '-'} | tamanho: ${payload.tamanho ?? '-'}`);
+    return this.productsService.search(query, payload.cor, payload.tamanho);
   }
 
   @Get(':externalId')

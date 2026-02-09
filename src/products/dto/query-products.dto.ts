@@ -9,4 +9,20 @@ export class BodyProductsDto {
     example: 'BC601719 - Botao Cristal - Diversos',
   })
   nome?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({
+    description: 'Cor do produto para filtro',
+    example: 'azul',
+  })
+  cor?: string;
+
+  @IsOptional()
+  @IsString()
+  @ApiPropertyOptional({
+    description: 'Tamanho do produto para filtro',
+    example: 'P',
+  })
+  tamanho?: string;
 }

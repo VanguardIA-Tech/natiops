@@ -483,6 +483,14 @@
             "type": "string",
             "description": "Nome completo ou parcial do produto para busca.",
             "example": "BC601719 - Botao Cristal - Diversos"
+          },
+          "cor": {
+            "type": "string",
+            "description": "Cor do produto para filtro (match parcial, ex: 'azul' encontra 'azul marinho')."
+          },
+          "tamanho": {
+            "type": "string",
+            "description": "Tamanho do produto para filtro (match exato, ex: 'P', 'M', 'GG')."
           }
         }
       },

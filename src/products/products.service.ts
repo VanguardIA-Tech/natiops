@@ -148,15 +148,25 @@ export class ProductsService {
     });
   }
 
-  async search(query: string) {
+  async search(query: string, cor?: string, tamanho?: string) {
     const products = await this.prisma.product.findMany({
       orderBy: { name: 'asc' },
-      select: { externalId: true, name: true },
+      select: { externalId: true, name: true, cor: true, tamanho: true },
     });
-    if (!query?.trim()) {
-      return products;
+
+    let result = products;
+
+    if (query?.trim()) {
+      result = this.filterProductsByName(result, query);
     }
-    return this.filterProductsByName(products, query);
+    if (cor?.trim()) {
+      result = this.filterProductsByCor(result, cor);
+    }
+    if (tamanho?.trim()) {
+      result = this.filterProductsByTamanho(result, tamanho);
+    }
+
+    return result.map(({ externalId, name }) => ({ externalId, name }));
   }
 
   private toInt(value: number | null | undefined): number | null {
@@ -172,7 +182,7 @@ export class ProductsService {
       .trim();
   }
 
-  private filterProductsByName(products: { externalId: string; name?: string }[], query: string) {
+  private filterProductsByName<T extends { name?: string }>(products: T[], query: string): T[] {
     const normalizedQuery = this.normalizeText(query);
     const queryWords = normalizedQuery.split(/\s+/).filter(Boolean);
     if (!queryWords.length) {
@@ -181,6 +191,24 @@ export class ProductsService {
     return products.filter(product => {
       const normalizedName = this.normalizeText(product.name);
       return queryWords.every(word => normalizedName.includes(word));
+    });
+  }
+
+  private filterProductsByCor<T extends { cor?: string | null }>(products: T[], cor: string): T[] {
+    const normalizedCor = this.normalizeText(cor);
+    if (!normalizedCor) return products;
+    return products.filter(product => {
+      const productCor = this.normalizeText(product.cor ?? '');
+      return productCor.includes(normalizedCor);
+    });
+  }
+
+  private filterProductsByTamanho<T extends { tamanho?: string | null }>(products: T[], tamanho: string): T[] {
+    const normalizedTamanho = this.normalizeText(tamanho);
+    if (!normalizedTamanho) return products;
+    return products.filter(product => {
+      const productTamanho = this.normalizeText(product.tamanho ?? '');
+      return productTamanho === normalizedTamanho;
     });
   }
 }
