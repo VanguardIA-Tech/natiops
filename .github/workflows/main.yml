@@ -2,7 +2,7 @@ name: Sincronizar Banco de dados
 
 on:
   schedule:
-    - cron: '0 8,14,20 * * *' # 08h, 14h e 20h UTC
+    - cron: '0 6,11,20 * * *'
   workflow_dispatch:
 
 jobs:
