@@ -75,7 +75,7 @@ export class HoldsController {
     return this.holdsService.renewHold(id, dto.expiresAt);
   }
 
-  @Get()
+  @Post('/search')
   @ApiOperation({ summary: 'Lista reservas ativas por email' })
   @ApiBody({ type: FindHoldsByEmailDto })
   @ApiBadRequestResponse({ description: 'Email inválido ou ausente' })

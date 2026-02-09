@@ -8,7 +8,7 @@ export class ProductDetailsResponseDto {
   externalId!: string;
 
   @ApiProperty()
-  name!: string;
+  nome!: string;
 
   @ApiProperty({ required: false })
   idProduto?: number;

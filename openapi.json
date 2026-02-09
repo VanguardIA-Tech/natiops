@@ -13,10 +13,10 @@
   "paths": {
     "/products": {
       "post": {
-        "description": "Buscar produtos pelo nome informado (parte ou completo).",
+        "description": "Retorna o(s) produto(s) cujo nome é informado no corpo da requisição.",
         "operationId": "BuscarProdutos",
         "requestBody": {
-          "description": "Payload contendo o nome parcial ou completo do produto que deve ser buscado.",
+          "description": "Payload com o nome do produto que deve ser buscado.",
           "required": false,
           "content": {
             "application/json": {
@@ -28,7 +28,7 @@
         },
         "responses": {
           "200": {
-            "description": "Lista (máximo 1 ou todos) de produtos com externalId e nome.",
+            "description": "Array com no máximo um produto correspondente ao nome informado.",
             "content": {
               "application/json": {
                 "schema": {
@@ -46,7 +46,7 @@
     },
     "/products/{externalId}": {
       "get": {
-        "description": "Retorna os dados completos do produto por externalId.",
+        "description": "Retorna os dados completos do produto pelo externalId.",
         "operationId": "ObterProdutoPorExternalId",
         "parameters": [
           {
@@ -62,7 +62,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Detalhes completos do produto, incluindo estoque e metadados.",
+            "description": "Informações de estoque e dados básicos do produto.",
             "content": {
               "application/json": {
                 "schema": {
@@ -80,7 +80,7 @@
     },
     "/products/details/{id}": {
       "get": {
-        "description": "Retorna os detalhes completos de um produto pelo seu id interno.",
+        "description": "Retorna detalhes completos do produto a partir do id interno.",
         "operationId": "ObterDetalhesDoProduto",
         "parameters": [
           {
@@ -180,8 +180,10 @@
           }
         },
         "deprecated": false
-      },
-      "get": {
+      }
+    },
+    "/holds/search": {
+      "post": {
         "description": "Lista reservas ativas por email.",
         "operationId": "ListarReservasPorEmail",
         "requestBody": {
@@ -368,6 +370,108 @@
         },
         "deprecated": false
       }
+    },
+    "/sync/runs": {
+      "get": {
+        "description": "Lista execuções de sincronização.",
+        "operationId": "ListarExecucoesSincronizacao",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20 },
+            "description": "Quantidade máxima de runs retornados"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 0 },
+            "description": "Deslocamento para paginação"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execuções ordenadas pela data de criação",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/SyncRunResponseDto" }
+                }
+              }
+            }
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/sync/runs/full": {
+      "post": {
+        "description": "Cria uma execução FULL em estado pendente.",
+        "operationId": "CriarExecucaoFull",
+        "responses": {
+          "200": {
+            "description": "Execução criada ou já existente pendente",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncRunResponseDto" }
+              }
+            }
+          },
+          "409": {
+            "description": "Já existe sincronização em andamento"
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/sync/runs/full/process": {
+      "post": {
+        "description": "Despacha o worker para processar a fila FULL.",
+        "operationId": "ProcessarFilaFull",
+        "responses": {
+          "200": {
+            "description": "Processamento iniciado",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncProcessResponseDto" }
+              }
+            }
+          }
+        },
+        "deprecated": false
+      }
+    },
+    "/sync/runs/{id}": {
+      "get": {
+        "description": "Retorna uma execução de sincronização pelo ID.",
+        "operationId": "ObterExecucaoSincronizacao",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Identificador da execução de sincronização",
+            "schema": { "type": "string", "format": "uuid", "example": "74f3b6d5-1234-4cde-8b12-1a2b3c4d5e6f" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes de uma sincronização",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SyncRunResponseDto" }
+              }
+            }
+          },
+          "404": {
+            "description": "Execução de sincronização não encontrada"
+          }
+        },
+        "deprecated": false
+      }
     }
   },
   "components": {
@@ -406,7 +510,7 @@
           "externalId": {
             "type": "string"
           },
-          "name": {
+          "nome": {
             "type": "string"
           },
           "idProduto": {
@@ -472,7 +576,7 @@
         "required": [
           "id",
           "externalId",
-          "name",
+          "nome",
           "stockTotal",
           "reservedStock",
           "createdAt",
@@ -684,6 +788,52 @@
         "required": [
           "externalId"
         ]
+      },
+      "SyncAuditEntryDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "externalId": { "type": "string" },
+          "action": { "type": "string" },
+          "payload": { "type": "object", "additionalProperties": true },
+          "hash": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "externalId", "action", "payload", "hash", "createdAt"]
+      },
+      "SyncCheckpointDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["FULL"] },
+          "page": { "type": "integer" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "type", "page", "updatedAt"]
+      },
+      "SyncRunResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string", "enum": ["FULL"] },
+          "status": { "type": "string", "enum": ["PENDING", "RUNNING", "SUCCESS", "FAILED"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "finishedAt": { "type": "string", "format": "date-time" },
+          "currentPage": { "type": "integer" },
+          "currentItemId": { "type": "string" },
+          "errorMessage": { "type": "string" },
+          "auditEntries": { "type": "array", "items": { "$ref": "#/components/schemas/SyncAuditEntryDto" } },
+          "checkpoints": { "type": "array", "items": { "$ref": "#/components/schemas/SyncCheckpointDto" } }
+        },
+        "required": ["id", "type", "status", "createdAt", "currentPage"]
+      },
+      "SyncProcessResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "processed" }
+        },
+        "required": ["status"]
       }
     }
   }
