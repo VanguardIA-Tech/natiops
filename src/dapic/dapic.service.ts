@@ -91,6 +91,7 @@ export class DapicService {
     limit = 100,
     timeoutMs = 20000,
     dataInicial?: string,
+    dataFinal?: string,
   ): Promise<DapicPageResponse> {
     const token = await this.ensureAccessToken();
     const response = await axios.get(`${this.baseUrl}/v1/armazenadores/produtos`, {
@@ -99,6 +100,7 @@ export class DapicService {
         Pagina: page,
         RegistrosPorPagina: limit,
         ...(dataInicial && { DataInicial: dataInicial }),
+        ...(dataFinal && { DataFinal: dataFinal }),
       },
       timeout: timeoutMs,
     });

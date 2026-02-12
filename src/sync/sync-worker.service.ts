@@ -92,17 +92,22 @@ export class SyncWorkerService {
     this.rateLimitPause = null;
 
     let dataInicial: string | undefined;
+    let dataFinal: string | undefined;
     if (type === SyncType.INCREMENTAL) {
       const lastFinish = await this.syncService.getLastSuccessfulFinishDate();
       if (!lastFinish) {
         throw new Error('Nenhum sync anterior bem-sucedido. Execute um sync FULL primeiro.');
       }
       dataInicial = this.formatDateForDapic(lastFinish);
-      this.logger.log(`INCREMENTAL: DataInicial=${dataInicial}`);
+      const hoje = this.formatDateForDapic(new Date());
+      if (dataInicial !== hoje) {
+        dataFinal = hoje;
+      }
+      this.logger.log(`INCREMENTAL: DataInicial=${dataInicial}${dataFinal ? `, DataFinal=${dataFinal}` : ''}`);
     }
 
     const firstPageResult = await this.fetchWithRetry(
-      () => this.processPage(1, limit, runId, 20000, dataInicial),
+      () => this.processPage(1, limit, runId, 20000, dataInicial, dataFinal),
       maxRetries,
       'Página 1',
     );
@@ -114,7 +119,7 @@ export class SyncWorkerService {
     if (!totalPages) {
       let nextPage = 2;
       while (true) {
-        const pageResult = await this.processPage(nextPage, limit, runId, 20000, dataInicial);
+        const pageResult = await this.processPage(nextPage, limit, runId, 20000, dataInicial, dataFinal);
         if (!pageResult.hasMore) break;
         nextPage += 1;
       }
@@ -137,7 +142,7 @@ export class SyncWorkerService {
         if (this.rateLimitPause) await this.rateLimitPause;
         await limiter.acquire();
         try {
-          await this.processPage(page, limit, runId, 20000, dataInicial);
+          await this.processPage(page, limit, runId, 20000, dataInicial, dataFinal);
         } catch (error) {
           const httpStatus = this.extractHttpStatus(error);
           const message = error instanceof Error ? error.message : String(error);
@@ -149,7 +154,7 @@ export class SyncWorkerService {
             await this.handleRateLimitPause(pauseMinutes);
             // Retry imediato desta página após pausa
             try {
-              await this.processPage(page, limit, runId, 20000, dataInicial);
+              await this.processPage(page, limit, runId, 20000, dataInicial, dataFinal);
               await this.resolvePageErrorByRunAndPage(runId, page);
               failCount--;
             } catch (retryErr) {
@@ -193,7 +198,7 @@ export class SyncWorkerService {
           if (this.rateLimitPause) await this.rateLimitPause;
           await retryLimiter.acquire();
           try {
-            await this.processPage(pageError.page, limit, runId, retryTimeout, dataInicial);
+            await this.processPage(pageError.page, limit, runId, retryTimeout, dataInicial, dataFinal);
             await this.syncService.resolvePageError(pageError.id);
           } catch (error) {
             const httpStatus = this.extractHttpStatus(error);
@@ -205,7 +210,7 @@ export class SyncWorkerService {
               await this.handleRateLimitPause(pauseMinutes);
               // Retry imediato após pausa
               try {
-                await this.processPage(pageError.page, limit, runId, retryTimeout, dataInicial);
+                await this.processPage(pageError.page, limit, runId, retryTimeout, dataInicial, dataFinal);
                 await this.syncService.resolvePageError(pageError.id);
               } catch (retryErr) {
                 const retryStatus = this.extractHttpStatus(retryErr);
@@ -324,8 +329,9 @@ export class SyncWorkerService {
     runId: string,
     timeoutMs = 20000,
     dataInicial?: string,
+    dataFinal?: string,
   ) {
-    const response = await this.dapicService.fetchProductPage(page, limit, timeoutMs, dataInicial);
+    const response = await this.dapicService.fetchProductPage(page, limit, timeoutMs, dataInicial, dataFinal);
     const { items, pagination } = this.extractPage(response);
     if (!items.length) {
       return { pagination, hasMore: false };
