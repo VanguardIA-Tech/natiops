@@ -81,7 +81,7 @@ export class SyncWorkerService {
     const concurrency =
       this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 2;
     const intervalSeconds =
-      this.configService.get<number>('SYNC_REQUEST_INTERVAL_SECONDS') ?? 60;
+      this.configService.get<number>('SYNC_REQUEST_INTERVAL_SECONDS') ?? 30;
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
     const pauseMinutes =
