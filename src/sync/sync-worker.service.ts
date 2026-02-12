@@ -91,8 +91,21 @@ export class SyncWorkerService {
 
     this.rateLimitPause = null;
 
+    let dateRange: { dataInicial: string; dataFinal: string } | undefined;
+    if (type === SyncType.INCREMENTAL) {
+      const lastFinish = await this.syncService.getLastSuccessfulFinishDate();
+      if (!lastFinish) {
+        throw new Error('Nenhum sync anterior bem-sucedido. Execute um sync FULL primeiro.');
+      }
+      dateRange = {
+        dataInicial: this.formatDateForDapic(lastFinish),
+        dataFinal: this.formatDateForDapic(new Date()),
+      };
+      this.logger.log(`INCREMENTAL: DataInicial=${dateRange.dataInicial}, DataFinal=${dateRange.dataFinal}`);
+    }
+
     const firstPageResult = await this.fetchWithRetry(
-      () => this.processPage(1, limit, runId),
+      () => this.processPage(1, limit, runId, 20000, dateRange),
       maxRetries,
       'Página 1',
     );
@@ -104,7 +117,7 @@ export class SyncWorkerService {
     if (!totalPages) {
       let nextPage = 2;
       while (true) {
-        const pageResult = await this.processPage(nextPage, limit, runId);
+        const pageResult = await this.processPage(nextPage, limit, runId, 20000, dateRange);
         if (!pageResult.hasMore) break;
         nextPage += 1;
       }
@@ -127,7 +140,7 @@ export class SyncWorkerService {
         if (this.rateLimitPause) await this.rateLimitPause;
         await limiter.acquire();
         try {
-          await this.processPage(page, limit, runId);
+          await this.processPage(page, limit, runId, 20000, dateRange);
         } catch (error) {
           const httpStatus = this.extractHttpStatus(error);
           const message = error instanceof Error ? error.message : String(error);
@@ -139,7 +152,7 @@ export class SyncWorkerService {
             await this.handleRateLimitPause(pauseMinutes);
             // Retry imediato desta página após pausa
             try {
-              await this.processPage(page, limit, runId);
+              await this.processPage(page, limit, runId, 20000, dateRange);
               await this.resolvePageErrorByRunAndPage(runId, page);
               failCount--;
             } catch (retryErr) {
@@ -183,7 +196,7 @@ export class SyncWorkerService {
           if (this.rateLimitPause) await this.rateLimitPause;
           await retryLimiter.acquire();
           try {
-            await this.processPage(pageError.page, limit, runId, retryTimeout);
+            await this.processPage(pageError.page, limit, runId, retryTimeout, dateRange);
             await this.syncService.resolvePageError(pageError.id);
           } catch (error) {
             const httpStatus = this.extractHttpStatus(error);
@@ -195,7 +208,7 @@ export class SyncWorkerService {
               await this.handleRateLimitPause(pauseMinutes);
               // Retry imediato após pausa
               try {
-                await this.processPage(pageError.page, limit, runId, retryTimeout);
+                await this.processPage(pageError.page, limit, runId, retryTimeout, dateRange);
                 await this.syncService.resolvePageError(pageError.id);
               } catch (retryErr) {
                 const retryStatus = this.extractHttpStatus(retryErr);
@@ -281,6 +294,13 @@ export class SyncWorkerService {
     return null;
   }
 
+  private formatDateForDapic(date: Date): string {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
   private sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -306,8 +326,9 @@ export class SyncWorkerService {
     limit: number,
     runId: string,
     timeoutMs = 20000,
+    dateRange?: { dataInicial: string; dataFinal: string },
   ) {
-    const response = await this.dapicService.fetchProductPage(page, limit, timeoutMs);
+    const response = await this.dapicService.fetchProductPage(page, limit, timeoutMs, dateRange);
     const { items, pagination } = this.extractPage(response);
     if (!items.length) {
       return { pagination, hasMore: false };

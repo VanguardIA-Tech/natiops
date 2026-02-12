@@ -98,4 +98,26 @@ export class SyncController {
     await this.worker.processPending(SyncType.FULL);
     return { status: 'processed' };
   }
+
+  @Post('runs/incremental')
+  @ApiOperation({ summary: 'Cria uma execução INCREMENTAL em estado pendente' })
+  @ApiOkResponse({
+    description: 'Execução criada ou já existente pendente',
+    type: SyncRunResponseDto,
+  })
+  @ApiConflictResponse({ description: 'Já existe sincronização em andamento' })
+  scheduleIncrementalRun() {
+    return this.syncService.createPendingRun(SyncType.INCREMENTAL);
+  }
+
+  @Post('runs/incremental/process')
+  @ApiOperation({ summary: 'Despacha o worker para processar a fila INCREMENTAL' })
+  @ApiOkResponse({
+    description: 'Processamento iniciado',
+    type: SyncProcessResponseDto,
+  })
+  async processIncrementalRun() {
+    await this.worker.processPending(SyncType.INCREMENTAL);
+    return { status: 'processed' };
+  }
 }

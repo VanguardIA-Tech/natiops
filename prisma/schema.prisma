@@ -15,6 +15,7 @@ enum SyncStatus {
 
 enum SyncType {
   FULL
+  INCREMENTAL
 }
 
 enum HoldStatus {

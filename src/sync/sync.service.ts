@@ -112,6 +112,18 @@ export class SyncService {
     });
   }
 
+  async getLastSuccessfulFinishDate(): Promise<Date | null> {
+    const run = await this.prisma.syncRun.findFirst({
+      where: {
+        status: SyncStatus.SUCCESS,
+        finishedAt: { not: null },
+      },
+      orderBy: { finishedAt: 'desc' },
+      select: { finishedAt: true },
+    });
+    return run?.finishedAt ?? null;
+  }
+
   async getCheckpoint(type: SyncType) {
     return this.prisma.syncCheckpoint.findUnique({
       where: { type },
