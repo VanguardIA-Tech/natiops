@@ -9,16 +9,16 @@ import { SyncService } from './sync.service';
 type DapicPayload = Record<string, unknown>;
 
 /**
- * Rate limiter global: garante no máximo `rps` requests por segundo
- * usando um intervalo mínimo entre requests com fila de espera.
+ * Rate limiter global: garante um intervalo mínimo (em ms) entre requests
+ * usando uma fila de espera.
  */
 class RateLimiter {
   private queue: Array<() => void> = [];
   private lastCall = 0;
   private readonly intervalMs: number;
 
-  constructor(rps: number) {
-    this.intervalMs = Math.ceil(1000 / rps);
+  constructor(intervalMs: number) {
+    this.intervalMs = intervalMs;
   }
 
   async acquire(): Promise<void> {
@@ -79,14 +79,15 @@ export class SyncWorkerService {
     const limit =
       this.configService.get<number>('SYNC_PAGE_SIZE') ?? 200;
     const concurrency =
-      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 10;
-    const rps =
-      this.configService.get<number>('SYNC_REQUESTS_PER_SECOND') ?? 5;
+      this.configService.get<number>('SYNC_PAGE_CONCURRENCY') ?? 2;
+    const intervalSeconds =
+      this.configService.get<number>('SYNC_REQUEST_INTERVAL_SECONDS') ?? 60;
     const maxRetries =
       this.configService.get<number>('SYNC_MAX_RETRIES') ?? 3;
     const pauseMinutes =
       this.configService.get<number>('SYNC_429_PAUSE_MINUTES') ?? 15;
-    const limiter = new RateLimiter(rps);
+    const intervalMs = intervalSeconds * 1000;
+    const limiter = new RateLimiter(intervalMs);
 
     this.rateLimitPause = null;
 
@@ -110,7 +111,7 @@ export class SyncWorkerService {
       return;
     }
 
-    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency}, rps=${rps})`);
+    this.logger.log(`Total de páginas: ${totalPages} (${limit} items/pág, concurrency=${concurrency}, intervalo=${intervalSeconds}s)`);
 
     const remainingPages: number[] = [];
     for (let next = 2; next <= totalPages; next += 1) {
@@ -164,8 +165,8 @@ export class SyncWorkerService {
     if (pendingPages.length > 0) {
       this.logger.log(`Retentando ${pendingPages.length} páginas que falharam (do banco)...`);
 
-      const retryConcurrency = Math.min(concurrency, 5);
-      const retryRps = Math.max(rps / 2, 1);
+      const retryConcurrency = Math.min(concurrency, 2);
+      const retryIntervalMs = intervalMs * 2;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         const toRetry = await this.syncService.getPendingRetryPages(runId);
@@ -176,7 +177,7 @@ export class SyncWorkerService {
         await this.sleep(delayMs);
 
         const retryTimeout = 40000;
-        const retryLimiter = new RateLimiter(retryRps);
+        const retryLimiter = new RateLimiter(retryIntervalMs);
 
         await this.runWithConcurrency(toRetry, retryConcurrency, async (pageError: SyncPageError) => {
           if (this.rateLimitPause) await this.rateLimitPause;
