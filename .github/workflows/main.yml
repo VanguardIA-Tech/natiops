@@ -5,16 +5,3 @@ on:
     - cron: '0 6,11,20 * * *'
   workflow_dispatch:
 
-jobs:
-  sincronizar:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Criar run incremental
-        run: |
-          curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/incremental \
-          -H "Content-Type: application/json"
-
-      - name: Execução do processador incremental
-        run: |
-          curl -X POST https://clientes-natiops.53rnlo.easypanel.host/sync/runs/incremental/process \
-          -H "Content-Type: application/json"
